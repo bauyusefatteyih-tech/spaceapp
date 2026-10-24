@@ -18,10 +18,10 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: 90a90c7f7b3297106ce22ffe6c57a3c1440d37e8
+          ref: 5979fb3abdcc7e404edc41e8118bd3c6c8a25916
           persist-credentials: false
       - name: Verify tested source commit
-        run: test "$(git rev-parse HEAD)" = 90a90c7f7b3297106ce22ffe6c57a3c1440d37e8
+        run: test "$(git rev-parse HEAD)" = 5979fb3abdcc7e404edc41e8118bd3c6c8a25916
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version-file: .nvmrc
@@ -35,9 +35,15 @@ jobs:
       - name: Typecheck
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run check
+      - name: Observability fault-injection regression
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm test -w @space/api -- tests/observability-fault-injection.test.ts
       - name: Full public test suite
         if: ${{ !cancelled() && steps.install.outcome == 'success' && steps.system.outcome == 'success' }}
         run: npm test
       - name: Production build
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run build
+      - name: Pack launcher
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run pack:dry-run -w run-spaceapp
