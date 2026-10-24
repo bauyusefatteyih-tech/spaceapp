@@ -39,4 +39,4 @@ jobs:
         working-directory: source
         run: |
           cp ../proof/bounty-proof/real-turn-trace.test.ts apps/api/tests/real-turn-trace.test.ts
-          npm test -w @space/api -- tests/real-turn-trace.test.ts --maxWorkers=1
+          npm test -w @space/api -- tests/real-turn-trace.test.ts
