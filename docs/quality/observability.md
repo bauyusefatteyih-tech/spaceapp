@@ -219,9 +219,12 @@ The trace context is local by default. An optional OTLP/HTTP (JSON) exporter sen
 SERVER span per API request when `SPACE_OTEL_EXPORTER_OTLP_ENDPOINT` is set (no
 OpenTelemetry dependency; `packages/runtime/src/otlp-span-exporter.ts`). Since
 2026-10-16 the worker and both memory workers use the same exporter (services
-`space-worker`, `space-memory-maintenance-worker`, `space-memory-mutation-worker`):
-one INTERNAL span per activity whose input carries a `traceparent`, as a child of
-that span, with the activity type, outcome and attempt only.
+`space-worker`, `space-memory-maintenance-worker`, `space-memory-mutation-worker`).
+When the exporter is configured, workflow interceptors propagate context through
+Temporal headers to workflow executions and activity attempts. Activity spans
+include allowlisted identifiers, activity type, outcome, attempt, duration and
+stable error code/category. Activity input context remains a fallback. See
+[Temporal OTLP traces](#temporal-otlp-traces) for span relationships and limits.
 - **API:** a valid inbound `traceparent` is continued (same trace ID, new span).
   An invalid or missing header gets a new trace ID. Every API log line carries
   `w3cTraceId` (Fastify `childLoggerFactory`).
@@ -233,28 +236,28 @@ that span, with the activity type, outcome and attempt only.
 - **Worker:** worker logs read the trace ID from the activity input. Internal
   room-action calls from the worker send a child `traceparent`, so the internal
   API request joins the same trace.
-- **Workflow code is unchanged.** Correlation is done in the API starter
-  (input/memo) and in an activity interceptor. The workflow bundle only gains the
-  optional contract field.
+- **Workflow instrumentation is conditional.** With an exporter configured,
+  the main worker and both memory workers bundle `workflow-tracing.ts` as a
+  workflow interceptor module and install its worker-side sink. Without an
+  exporter, they install neither. API input/memo propagation and the activity
+  interceptor also participate in correlation.
 
 ### Replay compatibility
 
-No file under `apps/worker/src` that the workflow bundle imports was changed
-(`workflows.ts`, `room-supervisor-state.ts`, `turn-runtime-policy.ts`,
-`dot-goal-loop.ts`). The `agent-turns` workflow bundle was built for the base
-commit and for this change and compared after normalizing paths and webpack
-module numbers. The only differences are in `@space/contracts`:
-- the new `observability` module;
-- the optional `traceparent` turn-input field;
-- the optional file search and readiness fields.
+The tracing-enabled workflow bundle includes the new interceptor and its
+trace-context helpers. Instrumentation uses Temporal's workflow clock and
+existing run identifiers, without network I/O or consumption of the workflow
+PRNG. The worker sink has `callDuringReplay: false` so replay does not export
+duplicate workflow spans.
 
-A history without `traceparent` parses exactly as before. Activity inputs are
-not part of Temporal's determinism check.
+`apps/worker/tests/workflow-tracing.test.ts` covers replay of instrumented and
+previously uninstrumented fixture histories, as well as disabled tracing. Those
+fixtures do not establish compatibility with every production history.
 
-The read-only live replay (`node scripts/temporal-replay-check.mjs --limit 30`)
-could not be run from the agent sandbox that made this change. Its network
-namespace has no route to the Temporal container (`172.18.0.5:7233`), and
-`127.0.0.1:7233` refuses connections. Run it before deploying this change.
+Live production histories have not been replayed for this change. Before
+deploying, run the read-only replay check from an authorized environment with
+access to the target Temporal service:
+`node scripts/temporal-replay-check.mjs --limit 30`.
 
 ## Redaction policy
 
