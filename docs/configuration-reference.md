@@ -52,3 +52,13 @@ background work, and is hidden in the web app. Public installs upgraded from
 1.1.x that used Job Copilot, the games, channels, Telegram or the desktop
 routes set the modules they keep, for example
 `SPACE_OPTIONAL_MODULES=job-copilot,games`.
+
+## Optional trace export
+
+`SPACE_OTEL_EXPORTER_OTLP_ENDPOINT` is an optional HTTP(S) collector base URL
+(for example `http://127.0.0.1:4318`). The API and all three Temporal workers
+append `/v1/traces` and send OTLP JSON. Unset or invalid values disable export;
+URLs containing credentials, query strings or fragments are rejected.
+No tracing SDK or provider credentials are needed. The worker workflow sink
+does not run during replay. See [Temporal OTLP traces](quality/observability.md#temporal-otlp-traces)
+for propagation, continuation links, queue limits, failure handling and tests.

@@ -1,3 +1,4 @@
+import { workflowTracingOptions } from "./workflow-tracing-worker.js";
 import { fileURLToPath } from "node:url";
 import { NativeConnection, Worker } from "@temporalio/worker";
 import { executePersistedMemoryChangeSet } from "./memory-mutation-activity.js";
@@ -23,7 +24,8 @@ if (!memoryMutationsEnabled(process.env)) {
     workflowsPath: fileURLToPath(new URL("./memory-mutation-workflows.js", import.meta.url)),
     activities: { executePersistedMemoryChangeSet },
     ...memoryMutationWorkerOptions,
-    interceptors: { activity: [createActivityObservabilityInterceptors({ spans })] }
+    interceptors: { activity: [createActivityObservabilityInterceptors({ spans })], workflowModules: workflowTracingOptions(spans).workflowModules },
+    sinks: workflowTracingOptions(spans).sinks
   });
   console.log(JSON.stringify({ service, status: "running", address, namespace, taskQueue: MEMORY_MUTATION_TASK_QUEUE }));
   const stopReloadWatch = reloadWhenServicesCommitChanges(worker, { log: (message) => console.log(JSON.stringify({ service, status: "reloading", message })) });

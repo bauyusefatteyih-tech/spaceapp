@@ -13,6 +13,10 @@
     "./tool-routing": {
       "types": "./dist/tool-routing.d.ts",
       "import": "./dist/tool-routing.js"
+    },
+    "./observability": {
+      "types": "./dist/observability.d.ts",
+      "import": "./dist/observability.js"
     }
   },
   "scripts": {

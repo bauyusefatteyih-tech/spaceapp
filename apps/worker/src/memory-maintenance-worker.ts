@@ -1,3 +1,4 @@
+import { workflowTracingOptions } from "./workflow-tracing-worker.js";
 import { fileURLToPath } from "node:url";
 import { NativeConnection, Worker } from "@temporalio/worker";
 import * as activities from "./memory-maintenance-activities.js";
@@ -30,7 +31,8 @@ if (!memoryMaintenanceEnabled(process.env)) {
       workflowsPath,
       activities,
       ...memoryMaintenanceWorkerOptions,
-      interceptors: { activity: [createActivityObservabilityInterceptors({ spans })] }
+      interceptors: { activity: [createActivityObservabilityInterceptors({ spans })], workflowModules: workflowTracingOptions(spans).workflowModules },
+      sinks: workflowTracingOptions(spans).sinks
     });
     console.log(JSON.stringify({
       service,

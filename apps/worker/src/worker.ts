@@ -1,3 +1,4 @@
+import { workflowTracingOptions } from "./workflow-tracing-worker.js";
 import { fileURLToPath } from "node:url";
 import { hostname } from "node:os";
 import { assertDevInstanceIsolated, instanceBackgroundJobEnabled } from "@space/contracts";
@@ -43,9 +44,9 @@ const worker = await Worker.create({
   taskQueue,
   workflowsPath,
   activities,
-  // Structured, correlated activity records and worker metrics. Activity-side
-  // only: the workflow sandbox and its replay behaviour are unchanged.
-  interceptors: { activity: [createActivityObservabilityInterceptors({ spans })] }
+  // Export activity attempts and replay-suppressed workflow spans.
+  interceptors: { activity: [createActivityObservabilityInterceptors({ spans })], workflowModules: workflowTracingOptions(spans).workflowModules },
+  sinks: workflowTracingOptions(spans).sinks
 });
 
 // Optional loopback-only Prometheus endpoint for worker metrics.

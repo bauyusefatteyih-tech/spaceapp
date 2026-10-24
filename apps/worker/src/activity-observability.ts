@@ -1,3 +1,4 @@
+import { traceFromHeaders, safeTraceAttributes } from "./workflow-trace-context.js";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomBytes } from "node:crypto";
 import type { Context } from "@temporalio/activity";
@@ -137,6 +138,7 @@ export interface ObserveActivityDependencies {
   cancelled?: () => boolean;
   /** OTLP export (SPACE_OTEL_EXPORTER_OTLP_ENDPOINT): one span per activity whose input carries a traceparent. */
   spans?: SpanExporter | null;
+  traceparent?: string;
 }
 
 function activityTraceparent(args: readonly unknown[]) {
@@ -194,19 +196,22 @@ export async function observeActivityExecution<T>(
       queueMs,
       rssBytes: process.memoryUsage().rss
     });
-    const parent = dependencies.spans ? activityTraceparent(args) : null;
+    const parent = dependencies.spans ? (parseTraceparent(dependencies.traceparent) ?? activityTraceparent(args)) : null;
     if (parent) {
-      dependencies.spans!.record({
+      try { dependencies.spans!.record({
         traceId: parent.traceId,
         spanId: randomBytes(8).toString("hex"),
         parentSpanId: parent.parentId,
         name: `activity ${activityType}`,
         startTimeUnixNano: BigInt(startedAt) * 1_000_000n,
         endTimeUnixNano: BigInt(startedAt + durationMs) * 1_000_000n,
-        attributes: { "space.activity_type": activityType, "space.outcome": outcome, "space.attempt": info.attempt },
+        attributes: safeTraceAttributes({ "space.activity_type": activityType, "space.outcome": outcome, "space.attempt": info.attempt,
+          "space.activity_id": info.activityId, "space.workflow_id": info.workflowExecution?.workflowId,
+          "space.workflow_run_id": info.workflowExecution?.runId, "space.workflow_type": info.workflowType,
+          "space.reason_code": reasonCode, "space.category": category, "space.duration_ms": durationMs }),
         error: outcome === "FAILED" || outcome === "FAILED_RESULT",
         kind: 1
-      });
+      }); } catch { /* Tracing must not change the activity result or retry policy. */ }
     }
   };
 
@@ -229,6 +234,7 @@ export function createActivityObservabilityInterceptors(dependencies: Omit<Obser
     inbound: {
       execute: (input, next) => observeActivityExecution(context.info, input.args, () => next(input), {
         ...dependencies,
+        traceparent: traceFromHeaders(input.headers) ?? dependencies.traceparent,
         cancelled: () => context.cancellationSignal.aborted
       })
     }

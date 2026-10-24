@@ -184,3 +184,15 @@ describe("durable background continuation", () => {
     expect(c.store.getRoomAgentMission(c.room.id, c.initial.mission.id)?.status).toBe("INTERRUPTED");
   });
 });
+
+
+it("persists a fresh background trace and its source link across retry", async () => {
+  const parent = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
+  const c = continuationFixture("OPEN_TYPES", parent);
+  const prepared = await prepareBackgroundContinuation(c.input, c.store);
+  if (prepared.state !== "READY") throw Error("Missing continuation");
+  expect(prepared.item.turn.traceLink).toBe(parent);
+  expect(prepared.item.turn.traceparent).toMatch(/^00-[a-f0-9]{32}-[a-f0-9]{16}-01$/);
+  expect(prepared.item.turn.traceparent?.slice(3, 35)).not.toBe(parent.slice(3, 35));
+  expect(await prepareBackgroundContinuation(c.input, c.store)).toEqual(prepared);
+});

@@ -186,7 +186,9 @@ it("registers the activity interceptor on every Temporal worker, including both 
   const { readFile } = await import("node:fs/promises");
   for (const entry of ["worker.ts", "memory-maintenance-worker.ts", "memory-mutation-worker.ts"]) {
     const source = await readFile(new URL(`../src/${entry}`, import.meta.url), "utf8");
-    expect(source, entry).toMatch(/interceptors: \{ activity: \[createActivityObservabilityInterceptors\(\{ spans \}\)\] \}/);
+    expect(source, entry).toContain("workflowModules: workflowTracingOptions(spans).workflowModules");
+    expect(source, entry).toContain("sinks: workflowTracingOptions(spans).sinks");
+    expect(source, entry).toMatch(/interceptors: \{ activity: \[createActivityObservabilityInterceptors\(\{ spans \}\)\]/);
   }
 });
 
@@ -202,4 +204,13 @@ it("exports one INTERNAL span per activity under the caller's traceparent", asyn
   expect(recorded).toHaveLength(1);
   expect(recorded[0]).toMatchObject({ traceId: "4bf92f3577b34da6a3ce929d0e0e4736", parentSpanId: "00f067aa0ba902b7", name: "activity runTurn",
     kind: 1, error: false, startTimeUnixNano: 1_000_000_000n, endTimeUnixNano: 1_250_000_000n });
+});
+
+
+it("collector failures preserve activity results and original errors", async () => {
+  const spans = { record: () => { throw new Error("collector failure"); }, flush: async () => {},
+    close: async () => {}, stats: () => ({ exported: 0, dropped: 0, failed: 0 }) };
+  await expect(observeActivityExecution(info(), [], async () => "ok", { spans, traceparent })).resolves.toBe("ok");
+  const error = new Error("original activity error");
+  await expect(observeActivityExecution(info(), [], async () => { throw error; }, { spans, traceparent })).rejects.toBe(error);
 });

@@ -1,4 +1,7 @@
+import { randomBytes } from "node:crypto";
 import {
+  formatTraceparent,
+  parseTraceparent,
   buildCodexAppServerTurnWorkflowId,
   buildRoomAgentSupervisorWorkflowId,
   roomAgentSupervisorQueueItemSchema,
@@ -130,7 +133,11 @@ maxMissionTokens: number | null = DEFAULT_ROOM_AGENT_MAX_MISSION_TOKENS): Promis
     agentUserMessageId: `agent_msg:bg-context-${input.continuationId}`,
     agentAssistantMessageId: `agent_msg:bg-response-${input.continuationId}`,
     // Resolve the current native thread from the durable session when executing.
-    agentThreadId: null, traceId: `trace:bg-${input.continuationId}`
+    agentThreadId: null, traceId: `trace:bg-${input.continuationId}`,
+    ...(parseTraceparent(source.queueItem.turn.traceparent) ? {
+      traceLink: source.queueItem.turn.traceparent,
+      traceparent: formatTraceparent(randomBytes(16).toString("hex"), randomBytes(8).toString("hex"), "01")
+    } : {})
   } });
   try {
     const enqueued = await store.enqueueRoomAgentMission({

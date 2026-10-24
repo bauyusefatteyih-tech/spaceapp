@@ -293,6 +293,60 @@ No credential or transcript export was added.
 | `apps/worker/tests/activity-observability.test.ts` | Interceptor records, outcomes, categories, metrics, loopback endpoint |
 | `apps/api/tests/observability-fault-injection.test.ts` | Four injected executor faults and one Temporal start failure, end to end |
 
+## Temporal OTLP traces
+
+Set `SPACE_OTEL_EXPORTER_OTLP_ENDPOINT` to a collector base URL, for example
+`http://127.0.0.1:4318`. The shared exporter posts OTLP/HTTP JSON to `/v1/traces`.
+The API, main worker, memory-maintenance worker and memory-mutation worker use
+the same exporter. With no endpoint, workers install no tracing workflow module
+or sink and make no collector requests.
+
+API SERVER spans parent workflow execution spans. Workflow headers parent each
+activity attempt, including retries and local activities, and child workflows.
+Activity spans include outcome, attempt, stable reason code/category, identifiers
+and duration. Trace attributes are allowlisted; prompts, outputs, paths, URLs and
+free-form exception messages are excluded. Failed-result activities and thrown
+failures are distinct outcomes. Export never controls activity success.
+
+Workflow instrumentation uses deterministic run identifiers and Temporal's
+workflow clock; it does not consume the workflow PRNG or perform network I/O.
+The worker sink is configured with `callDuringReplay: false`. Completed workflow
+spans are emitted when execution finishes, fails or continues as new; a running
+long-lived supervisor will not yet have a completed span. Workflow-task retries
+can deliver a sink call more than once; stable run span IDs let collectors
+recognize these duplicates. This is not an exactly-once export guarantee.
+
+`continueAsNew` carries both the current context and an OTLP span link to the
+previous run. Durable background continuations retain their Space-native
+`trace:bg-*` identifier, create a fresh W3C trace, and persist `traceLink` to the
+source request context. The new workflow exports that link and its activities
+parent the new workflow. A supervisor launching a mission from a different API
+trace preserves the mission's parent and links back to the supervisor.
+
+The in-memory queue holds at most 4096 spans, sends batches of up to 256, and
+flushes every 5 seconds with a 3-second POST timeout. `stats()` exposes exported,
+dropped and failed counts. Failed batches are counted and discarded, with no
+retry feedback into workflows. A collector outage does not block task execution.
+
+Reproducible checks (Node 22, after `npm ci` and the dependency builds in
+`npm run check`):
+
+```sh
+npm test -w @space/worker -- tests/workflow-tracing.test.ts
+npm test -w @space/runtime -- tests/otlp-span-exporter.test.ts
+npm test -w @space/api -- otlp
+```
+
+The integration test starts a local Temporal test server and local HTTP
+collector, runs stub activities with one failed attempt per execution, checks
+child and continuation relationships, and replays each recorded history while
+asserting zero sink exports. The initial Temporal test-server binary download
+requires internet; no paid provider, credentials or Docker service is required.
+On a slow host that exceeds the SDK's fixed five-second server startup limit,
+start an isolated Temporal test server beforehand and set
+`SPACE_TRACE_TEST_TEMPORAL_ADDRESS=127.0.0.1:<port>` for this test. Never point
+this test-only override at an operator or production Temporal server.
+
 ## Not covered
 
 - **Supervisor failures lose their cause.** When `roomAgentSupervisorWorkflow`
@@ -336,8 +390,8 @@ No credential or transcript export was added.
   the lookup also returns the Space-native agent runs (`space_agent_runs`) of the
   trace's workflows, joined by workflow id, with their status and error code, and
   names a failed run's code as the cause when no event carries one.
-- **Hosts emit no spans.** Since 2026-10-16 the OTLP exporter sends API SERVER
-  spans and worker activity spans (the worker and both memory workers); the CLI
+- **Hosts emit no spans.** The OTLP exporter sends API SERVER spans and worker
+  workflow/activity spans (the worker and both memory workers); the CLI
   and Browser Hosts still join traces through log lines only.
 - **Recovery counters are partial.** Recovery counters exist for plan model
   retries, CLI terminal reconnects and worker activity retries only.

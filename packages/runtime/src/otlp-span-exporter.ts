@@ -1,11 +1,12 @@
 /**
- * Optional OTLP/HTTP (JSON) export of API server spans and worker activity spans. Off unless
+ * Optional OTLP/HTTP (JSON) export of API, workflow and activity spans. Off unless
  * SPACE_OTEL_EXPORTER_OTLP_ENDPOINT names a collector base URL (spans go to
  * `<base>/v1/traces`). No dependency, no collector required: Space logs stay
  * joinable by W3C trace id without it.
  *
- * Spans carry only the method, route template, status code, service name and
- * Space request id; never URLs with parameters, headers, bodies or user data.
+ * Callers allowlist span attributes: route metadata for API requests, and
+ * identifiers, outcomes and durations for worker executions. Never include
+ * URLs with parameters, headers, bodies or user data.
  * Export is best effort: a bounded queue drops (and counts) spans instead of
  * growing, each POST has a timeout, and a failing collector never affects a
  * request.
@@ -22,6 +23,7 @@ export interface ServerSpan {
   error: boolean;
   /** OTLP span kind; SERVER (2) unless given. Worker activities use INTERNAL (1). */
   kind?: number;
+  links?: readonly { traceId: string; spanId: string }[];
 }
 
 export interface SpanExporterStats {
@@ -81,6 +83,7 @@ export function otlpTraceRequest(spans: readonly ServerSpan[], serviceName: stri
           spanId: span.spanId,
           ...(span.parentSpanId ? { parentSpanId: span.parentSpanId } : {}),
           name: span.name,
+          ...(span.links?.length ? { links: span.links.filter(link => traceIdPattern.test(link.traceId) && spanIdPattern.test(link.spanId)) } : {}),
           kind: span.kind ?? 2,
           startTimeUnixNano: span.startTimeUnixNano.toString(),
           endTimeUnixNano: span.endTimeUnixNano.toString(),
@@ -122,13 +125,13 @@ export function createOtlpSpanExporter(options: OtlpSpanExporterOptions): SpanEx
   };
   const flush = (): Promise<void> => {
     if (!inFlight) {
-      inFlight = (async () => {
+      inFlight = Promise.resolve().then(async () => {
         try {
           while (queue.length) await flushOnce();
         } finally {
           inFlight = null;
         }
-      })();
+      });
     }
     return inFlight;
   };
