@@ -35,6 +35,7 @@ jobs:
         run: |
           test "$(git rev-parse HEAD)" = 5979fb3abdcc7e404edc41e8118bd3c6c8a25916
           npm ci
+          npm run check
       - name: Capture actual API turn in Jaeger
         working-directory: source
         run: |
