@@ -1,0 +1,42 @@
+name: Real turn trace evidence
+on:
+  push:
+    branches: [validation/real-turn-trace-5979fb3]
+permissions:
+  contents: read
+jobs:
+  proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      jaeger:
+        image: jaegertracing/all-in-one:1.76.0@sha256:ab6f1a1f0fb49ea08bcd19f6b84f6081d0d44b364b6de148e1798eb5816bacac
+        ports: ["4318:4318", "16686:16686"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          path: proof
+          sparse-checkout: bounty-proof
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 5979fb3abdcc7e404edc41e8118bd3c6c8a25916
+          path: source
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version-file: source/.nvmrc
+          cache: npm
+          cache-dependency-path: source/package-lock.json
+      - name: Install pinned source dependencies
+        working-directory: source
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+        run: |
+          test "$(git rev-parse HEAD)" = 5979fb3abdcc7e404edc41e8118bd3c6c8a25916
+          npm ci
+      - name: Capture actual API turn in Jaeger
+        working-directory: source
+        run: |
+          cp ../proof/bounty-proof/real-turn-trace.test.ts apps/api/tests/real-turn-trace.test.ts
+          npm test -w @space/api -- tests/real-turn-trace.test.ts --maxWorkers=1
