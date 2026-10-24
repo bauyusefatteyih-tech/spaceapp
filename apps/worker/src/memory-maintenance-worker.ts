@@ -43,9 +43,12 @@ if (!memoryMaintenanceEnabled(process.env)) {
       activityConcurrency: memoryMaintenanceWorkerOptions.maxConcurrentActivityTaskExecutions
     }));
     const stopReloadWatch = reloadWhenServicesCommitChanges(worker, { log: (message) => console.log(JSON.stringify({ service, status: "reloading", message })) });
-    await worker.run();
-    stopReloadWatch();
-    await spans?.close();
+    try {
+      await worker.run();
+    } finally {
+      stopReloadWatch();
+      await spans?.close();
+    }
   } catch (error) {
     console.error(JSON.stringify({
       service,
