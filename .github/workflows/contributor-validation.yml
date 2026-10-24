@@ -1,0 +1,43 @@
+name: Contributor validation
+
+# Fork-only run of contributor checks on the exact submitted source commit.
+# Public-export provenance is maintainer-owned and excluded for external PRs
+# by bounty #61. This does not alter the upstream release workflow.
+on:
+  push:
+    branches:
+      - validation/temporal-tracing-90a90c7
+
+permissions:
+  contents: read
+
+jobs:
+  contributor-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 90a90c7f7b3297106ce22ffe6c57a3c1440d37e8
+          persist-credentials: false
+      - name: Verify tested source commit
+        run: test "$(git rev-parse HEAD)" = 90a90c7f7b3297106ce22ffe6c57a3c1440d37e8
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Install dependencies
+        id: install
+        run: npm ci
+      - name: Install test system dependencies
+        id: system
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ripgrep ffmpeg
+      - name: Typecheck
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run check
+      - name: Full public test suite
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && steps.system.outcome == 'success' }}
+        run: npm test
+      - name: Production build
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run build
